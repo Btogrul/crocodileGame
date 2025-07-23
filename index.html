@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body style="margin:0;overflow:hidden;background:#222;">
+    <canvas id="gameCanvas">
+
+    </canvas>
+    <div id="xpBar" style="
+        position:fixed;top:20px;left:50%;transform:translateX(-50%);
+        width:400px;height:30px;background:#333;border-radius:15px;
+        box-shadow:0 2px 8px #0006;display:flex;align-items:center;z-index:2;">
+        <div id="xpFill" style="
+            height:100%;background:linear-gradient(90deg,#0f0,#0ff);
+            border-radius:15px 0 0 15px;width:0%;transition:width 0.2s;">
+        </div>
+        <span id="xpText" style="
+            position:absolute;left:50%;transform:translateX(-50%);
+            color:#fff;font-family:sans-serif;font-size:18px;font-weight:bold;">
+            XP: 0
+        </span>
+    </div>
+    <div id="gameOverOverlay" style="
+        display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;
+        background:rgba(0,0,0,0.7);z-index:10;justify-content:center;align-items:center;
+        flex-direction:column;font-family:sans-serif;">
+        <h1 style="color:#ff4444;font-size:64px;margin:0;">Game Over!</h1>
+        <p style="color:#fff;font-size:24px;">Press <b>Space</b> to restart</p>
+    </div>
+    
+    
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const xpBar = document.getElementById('xpBar');
+    const xpFill = document.getElementById('xpFill');
+    const xpText = document.getElementById('xpText');
+    const gameOverOverlay = document.getElementById('gameOverOverlay');
+
+    // Skins
+    const skins = [
+        { name: "Classic", body: "limegreen", tail: "darkgreen", eye: "#fff", pupil: "#222" },
+        { name: "Red", body: "#e74c3c", tail: "#c0392b", eye: "#fff", pupil: "#222" },
+        { name: "Blue", body: "#3498db", tail: "#2980b9", eye: "#fff", pupil: "#222" },
+        { name: "Gold", body: "#ffd700", tail: "#bfa500", eye: "#fff", pupil: "#222" }
+    ];
+    let currentSkin = 0;
+
+    // Skin selector UI
+    const skinSelector = document.createElement('div');
+    skinSelector.style = `
+        position:fixed;top:60px;left:50%;transform:translateX(-50%);
+        display:flex;gap:10px;z-index:3;
+    `;
+    skins.forEach((skin, i) => {
+        const btn = document.createElement('button');
+        btn.textContent = skin.name;
+        btn.style = `
+            padding:6px 16px;border-radius:8px;border:none;
+            background:${skin.body};color:#222;font-weight:bold;cursor:pointer;
+            box-shadow:0 2px 8px #0004;
+        `;
+        btn.onclick = () => { currentSkin = i; };
+        skinSelector.appendChild(btn);
+    });
+    document.body.appendChild(skinSelector);
+
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        groundY = canvas.height - 60;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    let groundY = window.innerHeight - 60;
+    resizeCanvas();
+
+    let croc = { x: 80, y: groundY - 30, vy: 0, onGround: true };
+    let obstacles = [];
+    let xp = 0;
+    let gameOver = false;
+    let milestone = 0; // 0=normal, 1=sun, 2=moon
+
+    function drawCroc() {
+        const skin = skins[currentSkin];
+        ctx.save();
+        ctx.shadowColor = skin.body;
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = skin.body;
+        ctx.fillRect(croc.x, croc.y, 60, 30);
+        ctx.fillStyle = skin.tail;
+        ctx.fillRect(croc.x + 50, croc.y + 10, 25, 10);
+        ctx.fillStyle = skin.eye;
+        ctx.beginPath();
+        ctx.arc(croc.x + 15, croc.y + 8, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = skin.pupil;
+        ctx.beginPath();
+        ctx.arc(croc.x + 17, croc.y + 8, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    function drawObstacles() {
+        obstacles.forEach(o => {
+            ctx.save();
+            ctx.shadowColor = o.type === 'rock' ? "#a52a2a" : "#ff0";
+            ctx.shadowBlur = 8;
+            ctx.fillStyle = o.type === 'rock' ? '#a52a2a' : '#ff0';
+            ctx.fillRect(o.x, o.y, o.w, o.h);
+            if (o.type === 'rock') {
+                ctx.fillStyle = '#fff4';
+                ctx.beginPath();
+                ctx.arc(o.x + o.w/2, o.y + o.h/2, o.w/3, 0, Math.PI*2);
+                ctx.fill();
+            } else {
+                ctx.fillStyle = '#222';
+                ctx.fillRect(o.x + 5, o.y + 5, o.w-10, o.h-10);
+            }
+            ctx.restore();
+        });
+    }
+
+    function drawMap() {
+        ctx.save();
+        // BG color by milestone
+        if (milestone === 2) {
+            ctx.fillStyle = "#181e3a";
+        } else if (milestone === 1) {
+            ctx.fillStyle = "#ffe9b3";
+        } else {
+            ctx.fillStyle = "#222";
+        }
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Ground
+        ctx.fillStyle = milestone === 2 ? "#222a44" : (milestone === 1 ? "#ffe9b3" : "#444");
+        ctx.fillRect(0, groundY, canvas.width, 60);
+
+        // Decorative lines
+        ctx.strokeStyle = milestone === 2 ? "#3a4a88" : "#888";
+        ctx.lineWidth = 2;
+        for (let i = 0; i < canvas.width; i += 80) {
+            ctx.beginPath();
+            ctx.moveTo(i, groundY + 40);
+            ctx.lineTo(i + 40, groundY + 40);
+            ctx.stroke();
+        }
+
+        // Sun or Moon
+        if (milestone === 1) {
+            // Sun
+            ctx.save();
+            ctx.globalAlpha = 0.9;
+            ctx.beginPath();
+            ctx.arc(canvas.width - 100, 100, 50, 0, Math.PI * 2);
+            ctx.fillStyle = "#ffe066";
+            ctx.shadowColor = "#ffe066";
+            ctx.shadowBlur = 40;
+            ctx.fill();
+            ctx.restore();
+        }
+        if (milestone === 2) {
+            // Moon
+            ctx.save();
+            ctx.globalAlpha = 0.9;
+            ctx.beginPath();
+            ctx.arc(canvas.width - 100, 100, 50, 0, Math.PI * 2);
+            ctx.fillStyle = "#e0eafc";
+            ctx.shadowColor = "#e0eafc";
+            ctx.shadowBlur = 40;
+            ctx.fill();
+            // Crescent effect
+            ctx.globalCompositeOperation = "destination-out";
+            ctx.beginPath();
+            ctx.arc(canvas.width - 80, 100, 40, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalCompositeOperation = "source-over";
+            ctx.restore();
+        }
+        ctx.restore();
+    }
+
+   // ...existing code...
+function updateObstacles() {
+    obstacles.forEach(o => o.x -= 8);
+
+    // Increase gap for more distance between obstacles
+    const minGap = 220; // Increased minimum gap for jump
+    const maxGap = 480; // Increased maximum gap
+    if (
+        obstacles.length === 0 ||
+        obstacles[obstacles.length - 1].x < canvas.width - (Math.random() * (maxGap - minGap) + minGap)
+    ) {
+        let h = Math.random() * 40 + 30;
+        let type = Math.random() > 0.5 ? 'rock' : 'log';
+        obstacles.push({
+            x: canvas.width + 80,
+            y: groundY - h,
+            w: type === 'rock' ? 40 : 60,
+            h,
+            type
+        });
+    }
+    // Remove off-screen obstacles
+    obstacles = obstacles.filter(o => o.x + o.w > 0);
+}
+
+    function checkCollision() {
+        obstacles.forEach(o => {
+            if (
+                croc.x < o.x + o.w &&
+                croc.x + 60 > o.x &&
+                croc.y < o.y + o.h &&
+                croc.y + 30 > o.y
+            ) {
+                gameOver = true;
+            }
+        });
+    }
+
+    function updateXP() {
+        xp += 1;
+        let percent = Math.min(100, xp / 10);
+        xpFill.style.width = percent + "%";
+        xpText.textContent = "XP: " + xp;
+
+        // Milestone color changes
+        if (xp >= 2000) {
+            if (milestone !== 2) {
+                milestone = 2;
+                xpBar.style.background = "#181e3a";
+                xpFill.style.background = "linear-gradient(90deg,#e0eafc,#3a4a88)";
+                xpText.style.color = "#e0eafc";
+                skinSelector.style.background = "#181e3a";
+            }
+        } else if (xp >= 1000) {
+            if (milestone !== 1) {
+                milestone = 1;
+                xpBar.style.background = "#ffe9b3";
+                xpFill.style.background = "linear-gradient(90deg,#ffe066,#ffb347)";
+                xpText.style.color = "#222";
+                skinSelector.style.background = "#ffe9b3";
+            }
+        } else {
+            if (milestone !== 0) {
+                milestone = 0;
+                xpBar.style.background = "#333";
+                xpFill.style.background = "linear-gradient(90deg,#0f0,#0ff)";
+                xpText.style.color = "#fff";
+                skinSelector.style.background = "";
+            }
+        }
+    }
+
+    function showGameOver() {
+        gameOverOverlay.style.display = "flex";
+    }
+    function hideGameOver() {
+        gameOverOverlay.style.display = "none";
+    }
+
+    function gameLoop() {
+        if (gameOver) {
+            showGameOver();
+            ctx.save();
+            ctx.globalAlpha = 0.5;
+            ctx.fillStyle = "#000";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.restore();
+            return;
+        }
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawMap();
+        drawCroc();
+        drawObstacles();
+        updateObstacles();
+        checkCollision();
+        updateXP();
+
+        // Gravity and jump
+        if (!croc.onGround) {
+            croc.vy += 1.5;
+            croc.y += croc.vy;
+            if (croc.y >= groundY - 30) {
+                croc.y = groundY - 30;
+                croc.vy = 0;
+                croc.onGround = true;
+            }
+        }
+        requestAnimationFrame(gameLoop);
+    }
+
+    function restartGame() {
+        croc = { x: 80, y: groundY - 30, vy: 0, onGround: true };
+        obstacles = [];
+        xp = 0;
+        gameOver = false;
+        milestone = 0;
+        xpFill.style.width = "0%";
+        xpText.textContent = "XP: 0";
+        xpBar.style.background = "#333";
+        xpFill.style.background = "linear-gradient(90deg,#0f0,#0ff)";
+        xpText.style.color = "#fff";
+        skinSelector.style.background = "";
+        hideGameOver();
+        gameLoop();
+    }
+
+    document.addEventListener('keydown', e => {
+        if ((e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Space') && croc.onGround && !gameOver) {
+            croc.vy = -22;
+            croc.onGround = false;
+        }
+        if (gameOver && e.code === 'Space') {
+            restartGame();
+        }
+    });
+
+    // Also allow click/tap to restart
+    gameOverOverlay.addEventListener('click', restartGame);
+
+    gameLoop();
+</script>
+    
+</body>
+</html>
