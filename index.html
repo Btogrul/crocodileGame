@@ -2,13 +2,35 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Crocodile Run: XP Adventure</title>
+    <style>
+        body { margin:0;overflow:hidden;background:#222; }
+        .heart {
+            font-size: 32px;
+            transition: transform 0.3s cubic-bezier(.68,-0.55,.27,1.55);
+        }
+        .heart.hit {
+            transform: scale(1.5);
+        }
+        #mobileControls {
+            position:fixed;bottom:30px;left:50%;transform:translateX(-50%);
+            display:flex;gap:30px;z-index:20;
+        }
+        .mobile-btn {
+            background:#333;color:#fff;border:none;border-radius:50%;
+            width:70px;height:70px;font-size:32px;box-shadow:0 2px 8px #0006;
+            display:flex;align-items:center;justify-content:center;
+            font-family:sans-serif;cursor:pointer;user-select:none;
+        }
+        @media (max-width: 600px) {
+            #xpBar { width: 90vw; }
+            .mobile-btn { width:60px;height:60px;font-size:28px; }
+        }
+    </style>
 </head>
-<body style="margin:0;overflow:hidden;background:#222;">
-    <canvas id="gameCanvas">
-
-    </canvas>
+<body>
+    <canvas id="gameCanvas"></canvas>
     <div id="xpBar" style="
         position:fixed;top:20px;left:50%;transform:translateX(-50%);
         width:400px;height:30px;background:#333;border-radius:15px;
@@ -28,10 +50,17 @@
         background:rgba(0,0,0,0.7);z-index:10;justify-content:center;align-items:center;
         flex-direction:column;font-family:sans-serif;">
         <h1 style="color:#ff4444;font-size:64px;margin:0;">Game Over!</h1>
-        <p style="color:#fff;font-size:24px;">Press <b>Space</b> to restart</p>
+        <p style="color:#fff;font-size:24px;">Tap or Press <b>Space</b> to restart</p>
     </div>
-    
-    
+    <div id="healthBar" style="
+        position:fixed;top:20px;left:30px;z-index:5;display:flex;gap:12px;">
+        <span class="heart" id="heart1">❤️</span>
+        <span class="heart" id="heart2">❤️</span>
+        <span class="heart" id="heart3">❤️</span>
+    </div>
+    <div id="mobileControls">
+        <button class="mobile-btn" id="jumpBtn">⬆️</button>
+    </div>
 <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
@@ -39,6 +68,8 @@
     const xpFill = document.getElementById('xpFill');
     const xpText = document.getElementById('xpText');
     const gameOverOverlay = document.getElementById('gameOverOverlay');
+    const jumpBtn = document.getElementById('jumpBtn');
+    let health = 3;
 
     // Skins
     const skins = [
@@ -183,30 +214,28 @@
         ctx.restore();
     }
 
-   // ...existing code...
-function updateObstacles() {
-    obstacles.forEach(o => o.x -= 8);
+    function updateObstacles() {
+        obstacles.forEach(o => o.x -= 8);
 
-    // Increase gap for more distance between obstacles
-    const minGap = 220; // Increased minimum gap for jump
-    const maxGap = 480; // Increased maximum gap
-    if (
-        obstacles.length === 0 ||
-        obstacles[obstacles.length - 1].x < canvas.width - (Math.random() * (maxGap - minGap) + minGap)
-    ) {
-        let h = Math.random() * 40 + 30;
-        let type = Math.random() > 0.5 ? 'rock' : 'log';
-        obstacles.push({
-            x: canvas.width + 80,
-            y: groundY - h,
-            w: type === 'rock' ? 40 : 60,
-            h,
-            type
-        });
+        // Increase gap for more distance between obstacles
+        const minGap = 220;
+        const maxGap = 480;
+        if (
+            obstacles.length === 0 ||
+            obstacles[obstacles.length - 1].x < canvas.width - (Math.random() * (maxGap - minGap) + minGap)
+        ) {
+            let h = Math.random() * 40 + 30;
+            let type = Math.random() > 0.5 ? 'rock' : 'log';
+            obstacles.push({
+                x: canvas.width + 80,
+                y: groundY - h,
+                w: type === 'rock' ? 40 : 60,
+                h,
+                type
+            });
+        }
+        obstacles = obstacles.filter(o => o.x + o.w > 0);
     }
-    // Remove off-screen obstacles
-    obstacles = obstacles.filter(o => o.x + o.w > 0);
-}
 
     function checkCollision() {
         obstacles.forEach(o => {
@@ -214,9 +243,15 @@ function updateObstacles() {
                 croc.x < o.x + o.w &&
                 croc.x + 60 > o.x &&
                 croc.y < o.y + o.h &&
-                croc.y + 30 > o.y
+                croc.y + 30 > o.y &&
+                !o.hit
             ) {
-                gameOver = true;
+                o.hit = true;
+                health--;
+                updateHearts(health + 1);
+                if (health <= 0) {
+                    gameOver = true;
+                }
             }
         });
     }
@@ -227,7 +262,6 @@ function updateObstacles() {
         xpFill.style.width = percent + "%";
         xpText.textContent = "XP: " + xp;
 
-        // Milestone color changes
         if (xp >= 2000) {
             if (milestone !== 2) {
                 milestone = 2;
@@ -262,6 +296,19 @@ function updateObstacles() {
         gameOverOverlay.style.display = "none";
     }
 
+    function updateHearts(damageIdx = null) {
+        for (let i = 1; i <= 3; i++) {
+            const heart = document.getElementById('heart' + i);
+            heart.style.visibility = i <= health ? 'visible' : 'hidden';
+            heart.classList.remove('hit');
+        }
+        if (damageIdx !== null && damageIdx >= 1 && damageIdx <= 3) {
+            const heart = document.getElementById('heart' + damageIdx);
+            heart.classList.add('hit');
+            setTimeout(() => heart.classList.remove('hit'), 300);
+        }
+    }
+
     function gameLoop() {
         if (gameOver) {
             showGameOver();
@@ -280,7 +327,6 @@ function updateObstacles() {
         checkCollision();
         updateXP();
 
-        // Gravity and jump
         if (!croc.onGround) {
             croc.vy += 1.5;
             croc.y += croc.vy;
@@ -299,16 +345,19 @@ function updateObstacles() {
         xp = 0;
         gameOver = false;
         milestone = 0;
+        health = 3;
         xpFill.style.width = "0%";
         xpText.textContent = "XP: 0";
         xpBar.style.background = "#333";
         xpFill.style.background = "linear-gradient(90deg,#0f0,#0ff)";
         xpText.style.color = "#fff";
         skinSelector.style.background = "";
+        updateHearts();
         hideGameOver();
         gameLoop();
     }
 
+    // Keyboard controls
     document.addEventListener('keydown', e => {
         if ((e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Space') && croc.onGround && !gameOver) {
             croc.vy = -22;
@@ -319,11 +368,35 @@ function updateObstacles() {
         }
     });
 
-    // Also allow click/tap to restart
-    gameOverOverlay.addEventListener('click', restartGame);
+    // Mobile jump button
+    jumpBtn.addEventListener('touchstart', e => {
+        e.preventDefault();
+        if (croc.onGround && !gameOver) {
+            croc.vy = -22;
+            croc.onGround = false;
+        }
+    });
 
+    // Tap canvas to jump (mobile)
+    canvas.addEventListener('touchstart', e => {
+        e.preventDefault();
+        if (croc.onGround && !gameOver) {
+            croc.vy = -22;
+            croc.onGround = false;
+        }
+    });
+
+    // Tap overlay to restart
+    gameOverOverlay.addEventListener('touchstart', e => {
+        e.preventDefault();
+        if (gameOver) restartGame();
+    });
+    gameOverOverlay.addEventListener('click', () => {
+        if (gameOver) restartGame();
+    });
+
+    updateHearts();
     gameLoop();
 </script>
-    
 </body>
 </html>
