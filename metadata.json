@@ -1,0 +1,8 @@
+{
+  "name": "Crocodile Run: XP Adventure",
+  "description": "An arcade obstacle-running game where you control a crocodile, dodge obstacles, collect XP, and level up milestones.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
